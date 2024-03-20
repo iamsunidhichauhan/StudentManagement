@@ -26,11 +26,9 @@ const userSchema = new mongoose.Schema({
         type:String,
     }
 }, {
-    timestamps: true 
+    timestamps: { createdAt: true, updatedAt: false }
 });
 
 const User = mongoose.model('User', userSchema);
 
 module.exports = User;
-
-// registration date, fullname,email,phone no, DOB, role, password, and token.
