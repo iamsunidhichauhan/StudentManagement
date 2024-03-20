@@ -378,36 +378,29 @@ app.put(`/update/user`, verifyToken, isAdmin, async (req, res) => {
 });
 
 // login
-app.post(`/login/user`, async ( req, res) => {
+app.post(`/login/user`, async (req, res) => {
     try {
         const { email, password } = req.body;
-
-        const user = await User.findOne({ email });
-        console.log("data:", user);
-        if (!user) {
+        const userWithPassword = await User.findOne({ email });
+        if (!userWithPassword) {
             return res.status(400).json({ message: "User not registered." });
         }
-        const isAuthenticated = await bcrypt.compare(password, user.password);
+        const user = await User.findOne({ email }).select('-password');
+
+        const isAuthenticated = await bcrypt.compare(password, userWithPassword.password);
         if (!isAuthenticated) {
-            return res.status(400).json({ message: "Invalid username or password. " });
+            return res.status(400).json({ message: "Invalid username or password." });
         } else {
             // Token generation:
             const token = jwt.sign({ userId: user._id, email: user.email, role: user.role }, secretKey, { expiresIn: '24h' });
-
-            const sanitizedUser = { userId: user._id, email: user.email, role: user.role }; // Create sanitized user
-            res.status(200).json({ message: "Logged in!", sanitizedUser, token });
-
-            // user.token = token;
-            // // delete user.password;
-            // await user.save();
-            // console.log("password at login", user.password)      
-            // res.status(200).json({ message: "Logged in!", user });
+            res.status(200).json({ message: "Logged in!", user });
         }
     } catch (error) {
         console.error("Error:", error);
         res.status(500).json({ error: "Internal server error" });
     }
 });
+
 
 
 // Get all Students
@@ -487,7 +480,7 @@ app.post(`/register/student`, verifyToken,isAdmin, async (req, res) => {
 });
 
 // register teacher
-app.post(`/register/student`, verifyToken,isAdmin, async (req, res) => {
+app.post(`/register/teacher`, verifyToken,isAdmin, async (req, res) => {
     try {
         const { fullName, email, contact, DOB, password, confirmPassword } = req.body;
         const role = "teacher";
