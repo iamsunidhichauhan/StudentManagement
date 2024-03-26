@@ -17,10 +17,13 @@ const userSchema = new mongoose.Schema({
         type: Date,
     },
     role: {
-        type: String,
+        type: String, // either teacher or student or admin
     },
     password:{
         type:String,
+    },
+    classNumber:{
+        type:[Number]
     },
     token:{
         type:String,
@@ -29,6 +32,6 @@ const userSchema = new mongoose.Schema({
     timestamps: { createdAt: true, updatedAt: false }
 });
 
-const User = mongoose.model('User', userSchema);
+const User = mongoose.model('user', userSchema);
 
 module.exports = User;
