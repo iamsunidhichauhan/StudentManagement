@@ -12,6 +12,7 @@ const {
   validateDOB,
   validatePassword,
   validateRegistration,
+  validateClassNumber,
 } = require(`../validations/validator`);
 
 // //transporter object
@@ -26,26 +27,62 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-const createClass = async (req, res) => {
-  const { classNumber } = req.body;
+const getAllClass = async (req, res) => {
   try {
-    if (
-      !classNumber ||
-      isNaN(classNumber) ||
-      classNumber < 1 ||
-      classNumber > 12
-    ) {
-      return res
-        .status(400)
-        .json({ error: "classNumber must be a number between 1 and 12" });
+    const classes = await Class.find({});
+    if (!classes || classes.length === 0) {
+      return res.status(404).json({ message: "No class found." });
+    }
+    res.status(200).json({ message: "List of all classes:", classes });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const createClass = async (req, res) => {
+  const { classNumber, classTeacherId } = req.body;
+  try {
+    const classNumberErrors = validateClassNumber(classNumber);
+    if (classNumberErrors.length > 0) {
+      return res.status(400).json({ errors: classNumberErrors });
+    }
+    if (!classTeacherId) {
+      return res.status(400).json({ error: "Class teacher ID is required." });
     }
 
+    // Check if classteacherId corresponds to an existing teacher
+    const existingTeacher = await User.findOne({
+      _id: classTeacherId,
+      role: "teacher",
+    });
+    if (!existingTeacher) {
+      return res
+        .status(404)
+        .json({ error: "Class teacher not found or is not a teacher." });
+    }
+    const existingClass = await Class.findOne({ classTeacherId });
+    if (existingClass) {
+      return res
+        .status(400)
+        .json({
+          error:
+            "Teacher is already assigned as class teacher for another class.",
+        });
+    }
+
+    // Create new class
     const newClass = new Class({
       classNumber: parseInt(classNumber),
+      classTeacherId: classTeacherId,
     });
 
     // Save the new class to the database
     await newClass.save();
+
+    // Update the respective teacher's classTeacherOf field
+    existingTeacher.classTeacherOf.push(newClass._id);
+    await existingTeacher.save();
+
     res.status(200).json({ message: "Class created successfully!" });
   } catch (error) {
     console.error(error);
@@ -53,31 +90,73 @@ const createClass = async (req, res) => {
   }
 };
 
+// const getClassMembers = async (req, res) => {
+//   try {
+//     const classNumber = parseInt(req.body.classNumber);
+//     if (!classNumber) {
+//       res.status(404).json("classNUmber is required.");
+//     }
+
+//     // Fetch the corresponding student and teacher IDs based on classNumber
+//     const students = await User.find(
+//       { classNumber: classNumber, role: "student" },
+//       "_id"
+//     );
+//     const teacher = await User.find(
+//       { classNumber: classNumber, role: "teacher" },
+//       "_id"
+//     );
+
+//     // Find the existing class document
+//     let existingClass = await Class.findOne({ classNumber: classNumber });
+
+//     if (!existingClass) {
+//       return res
+//         .status(404)
+//         .json({ message: `Class ${classNumber} not found` });
+//     }
+
+//     // Update the existing class document with student and teacher IDs
+//     existingClass.students = students.map((student) => student._id.toString());
+//     existingClass.teacher = teacher.map((teacher) => teacher._id.toString());
+
+//     // Save the updated class document
+//     await existingClass.save();
+
+//     // Fetch the class list from the database again
+//     existingClass = await Class.findOne({ classNumber: classNumber }).populate('students teacher');
+
+//     // Send the response with the updated class list
+//     res.status(200).json({
+//       message: "Class members fetched successfully.",
+//       class: existingClass,
+//     });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: "Error fetching class members." });
+//   }
+// };
+
 // get classmembers:
 const getClassMembers = async (req, res) => {
   try {
     const classNumber = parseInt(req.body.classNumber);
     if (!classNumber) {
-      res.status(404).json("classNUmber is required.");
+      return res.status(400).json({ message: "classNumber is required." });
     }
-    console.log("class at getMembers: ", classNumber);
 
     // Fetch the corresponding student and teacher IDs based on classNumber
     const students = await User.find(
       { classNumber: classNumber, role: "student" },
       "_id"
     );
-    const teacher = await User.find(
+    const teachers = await User.find(
       { classNumber: classNumber, role: "teacher" },
       "_id"
     );
-    console.log("fetch student Id:", students);
-    console.log(teacher);
 
     // Find the existing class document
     let existingClass = await Class.findOne({ classNumber: classNumber });
-    console.log("classNumber", classNumber);
-    console.log("existingclass:", existingClass);
 
     if (!existingClass) {
       return res
@@ -87,25 +166,20 @@ const getClassMembers = async (req, res) => {
 
     // Update the existing class document with student and teacher IDs
     existingClass.students = students.map((student) => student._id.toString());
-    existingClass.teacher = teacher.map((teacher) => teacher._id.toString()); // if multiple teacher
-    // existingClass.teacher = teacher[0]._id.toString(); //if one teacher
+    existingClass.teachers = teachers.map((teacher) => teacher._id.toString());
 
-    // total number of students studying in the class
-    const totalStudents = students.length;
+    // Update total number of students and teachers in the class
+    existingClass.totalStudents = students.length;
+    existingClass.totalTeachers = teachers.length;
 
     // Save the updated class document
     await existingClass.save();
 
-    // Send the response with total number of students
+    // Send the response with the updated class document
     res.status(200).json({
-      message: "Class members fetched sucessfully.",
+      message: "Class members fetched successfully.",
       class: existingClass,
-      totalStudents: totalStudents, // Sending total number of students with the response
     });
-
-    // Update total number of students in the database
-    existingClass.totalStudents = totalStudents;
-    await existingClass.save();
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Error fetching class members." });
@@ -137,7 +211,11 @@ const registerStudent = async (req, res) => {
     let errors = [];
 
     // Convert classNumber to an array if provided
-    let classNumbers = classNumber? Array.isArray(classNumber)? classNumber: [classNumber]: [];
+    let classNumbers = classNumber
+      ? Array.isArray(classNumber)
+        ? classNumber
+        : [classNumber]
+      : [];
 
     // Validate classNumber
     if (!classNumber) {
@@ -153,13 +231,17 @@ const registerStudent = async (req, res) => {
       }
     }
 
-    // Validate registration fields
-    const validationErrors = validateRegistration(req);
-    errors = errors.concat(validationErrors); // Concatenate validation errors
-
     // If there are any errors, return them
     if (errors.length > 0) {
       return res.status(400).json({ message: errors.join(" ") });
+    }
+
+    // Check if the class exists
+    const classObj = await Class.findOne({ classNumber: classNumber });
+    if (!classObj) {
+      return res
+        .status(400)
+        .json({ message: `Class with classNumber ${classNumber} not found.` });
     }
 
     // Hash the password
@@ -180,7 +262,12 @@ const registerStudent = async (req, res) => {
     // Save the new user
     await newUser.save();
 
-    // Create a user object without the password field
+    // Assign the student to the class
+    classObj.students.push(newUser._id);
+    classObj.totalStudents = classObj.students.length; // Count total students
+    await classObj.save();
+
+    // Creating a user object without the password field
     const userWithoutPassword = { ...newUser.toObject() };
     delete userWithoutPassword.password;
     delete userWithoutPassword.updatedAt;
@@ -192,7 +279,6 @@ const registerStudent = async (req, res) => {
   }
 };
 
-// signup teacher
 const registerTeacher = async (req, res) => {
   try {
     const {
@@ -214,30 +300,20 @@ const registerTeacher = async (req, res) => {
         .json({ message: "Email already exists! Please check." });
     }
 
-    // Initialize an array to store errors
     let errors = [];
 
-    // Convert single classNumber to an array if provided
-    let classNumbers = classNumber;
-    if (!Array.isArray(classNumber)) {
-      classNumbers = [classNumber];
-    }
-
     // Validate classNumber
-    if (!classNumber || classNumber.length === 0) {
-      errors.push("classNumber is required.");
-    } else {
-      for (const num of classNumbers) {
-        if (isNaN(num) || num < 1 || num > 12) {
-          errors.push("classNumber must be a number between 1 and 12.");
-          break;
+    if (classNumber) {
+      const num = parseInt(classNumber);
+      if (isNaN(num) || num < 1 || num > 12) {
+        errors.push("Class number must be a number between 1 and 12.");
+      } else {
+        // Check if class exists
+        const classObj = await Class.findOne({ classNumber });
+        if (!classObj) {
+          errors.push(`Class with classNumber ${classNumber} not found.`);
         }
       }
-    }
-
-    // If there are any errors, return them
-    if (errors.length > 0) {
-      return res.status(400).json({ message: errors.join(" ") });
     }
 
     // Validate registration fields
@@ -255,19 +331,40 @@ const registerTeacher = async (req, res) => {
     // Create a new user object
     const newUser = new User({
       regDate: new Date(),
-      fullName: fullName,
+      fullName,
       password: hashedPassword,
-      email: email,
-      contact: contact,
-      DOB: DOB,
-      role: role,
-      classNumber: classNumber,
+      email,
+      contact,
+      DOB,
+      role,
+      classNumber,
     });
 
     // Save the new user
     await newUser.save();
 
-    // Create a user object without the password field
+    // If classNumber is provided, assign the teacher to the classes
+    if (classNumber) {
+      if (Array.isArray(classNumber)) {
+        for (const num of classNumber) {
+          const classObj = await Class.findOne({ classNumber: num });
+          if (classObj) {
+            classObj.teachers.push(newUser._id);
+            classObj.totalTeachers = classObj.teachers.length; // Count total teachers
+            await classObj.save();
+          }
+        }
+      } else {
+        const classObj = await Class.findOne({ classNumber });
+        if (classObj) {
+          classObj.teachers.push(newUser._id);
+          classObj.totalTeachers = classObj.teachers.length; // Count total teachers
+          await classObj.save();
+        }
+      }
+    }
+
+    // Creating a user object without the password field
     const userWithoutPassword = { ...newUser.toObject() };
     delete userWithoutPassword.password;
     delete userWithoutPassword.updatedAt;
@@ -283,7 +380,7 @@ const registerTeacher = async (req, res) => {
 const registerUser = async (req, res) => {
   try {
     const { fullName, email, contact, DOB, password } = req.body;
-    const classNumber = undefined
+    const classNumber = undefined;
 
     // Check if the requesting user is a superadmin
     if (!req.user || req.user.role !== "superadmin") {
@@ -481,6 +578,25 @@ const forgotPassword = async (req, res) => {
   }
 };
 
+// findOne
+const findOneClass = async (req, res) => {
+  try {
+    const userId = req.body.userId;
+    if (!userId) {
+      return res.status(404).json({ message: "please provide userId." });
+    }
+
+    const foundClass = await Class.findOne({ _id: userId }).select("-password");
+    if (!foundClass) {
+      return res.status(404).json({ message: "class not found" });
+    }
+
+    res.status(200).json({ message: "user found:", class: foundClass });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   registerStudent,
   registerUser,
@@ -490,4 +606,6 @@ module.exports = {
   forgotPassword,
   createClass,
   getClassMembers,
+  getAllClass,
+  findOneClass,
 };

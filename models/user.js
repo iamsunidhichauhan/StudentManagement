@@ -36,6 +36,7 @@ const userSchema = new mongoose.Schema({
         type: Date,
         default: Date.now
     },
+    classTeacherOf: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Class' }],
 });
 
 const User = mongoose.model('user', userSchema);
