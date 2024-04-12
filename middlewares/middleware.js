@@ -5,8 +5,8 @@ const secretKey = "secret_key";
 // verify admin
 const isAdmin = (req, res, next) => {
     const { role } = req.user;
-    console.log("========>")
-    console.log("role at isAdmin func",role)
+    // console.log("========>")
+    // console.log("role at isAdmin func",role)
     if (role !== 'admin' && role !== "superadmin") {
         return res.status(403).json({ message: 'You do not have permission to perform this action.' });
     }    
@@ -25,7 +25,7 @@ function verifyToken(req, res, next) {
         return res.status(401).json({ message: "Unauthorized: Invalid token" });
       }
       req.user = decoded;
-      console.log("decoded user : ", req.user);
+      // console.log("decoded user : ", req.user);
       
       next();
     });

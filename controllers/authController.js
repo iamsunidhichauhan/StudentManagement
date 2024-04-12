@@ -27,68 +27,9 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-const getAllClass = async (req, res) => {
-  try {
-    const classes = await Class.find({});
-    if (!classes || classes.length === 0) {
-      return res.status(404).json({ message: "No class found." });
-    }
-    res.status(200).json({ message: "List of all classes:", classes });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
 
-const createClass = async (req, res) => {
-  const { classNumber, classTeacherId } = req.body;
-  try {
-    const classNumberErrors = validateClassNumber(classNumber);
-    if (classNumberErrors.length > 0) {
-      return res.status(400).json({ errors: classNumberErrors });
-    }
-    if (!classTeacherId) {
-      return res.status(400).json({ error: "Class teacher ID is required." });
-    }
 
-    // Check if classteacherId corresponds to an existing teacher
-    const existingTeacher = await User.findOne({
-      _id: classTeacherId,
-      role: "teacher",
-    });
-    if (!existingTeacher) {
-      return res
-        .status(404)
-        .json({ error: "Class teacher not found or is not a teacher." });
-    }
-    const existingClass = await Class.findOne({ classTeacherId });
-    if (existingClass) {
-      return res
-        .status(400)
-        .json({
-          error:
-            "Teacher is already assigned as class teacher for another class.",
-        });
-    }
 
-    // Create new class
-    const newClass = new Class({
-      classNumber: parseInt(classNumber),
-      classTeacherId: classTeacherId,
-    });
-
-    // Save the new class to the database
-    await newClass.save();
-
-    // Update the respective teacher's classTeacherOf field
-    existingTeacher.classTeacherOf.push(newClass._id);
-    await existingTeacher.save();
-
-    res.status(200).json({ message: "Class created successfully!" });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Failed to create class." });
-  }
-};
 
 // const getClassMembers = async (req, res) => {
 //   try {
@@ -278,6 +219,8 @@ const registerStudent = async (req, res) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
+
+
 
 const registerTeacher = async (req, res) => {
   try {
@@ -578,24 +521,7 @@ const forgotPassword = async (req, res) => {
   }
 };
 
-// findOne
-const findOneClass = async (req, res) => {
-  try {
-    const userId = req.body.userId;
-    if (!userId) {
-      return res.status(404).json({ message: "please provide userId." });
-    }
 
-    const foundClass = await Class.findOne({ _id: userId }).select("-password");
-    if (!foundClass) {
-      return res.status(404).json({ message: "class not found" });
-    }
-
-    res.status(200).json({ message: "user found:", class: foundClass });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
 
 module.exports = {
   registerStudent,
@@ -604,8 +530,5 @@ module.exports = {
   resetPassword,
   registerTeacher,
   forgotPassword,
-  createClass,
   getClassMembers,
-  getAllClass,
-  findOneClass,
 };
