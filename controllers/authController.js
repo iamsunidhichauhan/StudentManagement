@@ -27,10 +27,6 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-
-
-
-
 // const getClassMembers = async (req, res) => {
 //   try {
 //     const classNumber = parseInt(req.body.classNumber);
@@ -184,7 +180,9 @@ const registerStudent = async (req, res) => {
         .status(400)
         .json({ message: `Class with classNumber ${classNumber} not found.` });
     }
-
+    const studentSubject = classObj.subjects;
+    console.log("studentSubject is:", studentSubject);
+    console.log("studentSubject", studentSubject);
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -198,6 +196,7 @@ const registerStudent = async (req, res) => {
       DOB: DOB,
       role: role,
       classNumber: classNumber,
+      subjects: studentSubject,
     });
 
     // Save the new user
@@ -219,8 +218,6 @@ const registerStudent = async (req, res) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
-
-
 
 const registerTeacher = async (req, res) => {
   try {
@@ -271,6 +268,7 @@ const registerTeacher = async (req, res) => {
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+   
     // Create a new user object
     const newUser = new User({
       regDate: new Date(),
@@ -520,8 +518,6 @@ const forgotPassword = async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
-
-
 
 module.exports = {
   registerStudent,
