@@ -14,45 +14,46 @@ const createSubject = async (req, res) => {
 
     // Validate subject content
     const validationErrors = validateSubjects(subjects, classNumber);
-    console.log("subjects:  ", subjects);
     if (validationErrors.length > 0) {
       return res.status(400).json({ errors: validationErrors });
     }
 
     // Find the class with the given classNumber
-    const classDetails = await Class.findOne({ classNumber });
-
-    console.log("classNumber is :", classNumber);
     if (
       typeof classNumber !== "number" ||
-      classNumber < 1 ||
-      classNumber > 10
+      classNumber <= 1 ||
+      classNumber >= 12
     ) {
-      return res
-        .status(400)
-        .json({ message: "Class number must be a number between 1 and 10" });
+      // return res
+      //   .status(400)
+      //   .json({ message: "Class number must be a number between 1 and 12." });
     }
+
+    const classDetails = await Class.findOne({ classNumber });
 
     if (!classDetails) {
       return res.status(404).json({ error: "Class not found" });
     }
+
     // // Check if subjects have already been created for this class
-    // if(classDetails.subjects.length > 0 ){
-    //     return res.status(400).json({message:"subjects already been declared for this class."})
+    // if (classDetails.subjects.length > 0) {
+    //   return res.status(400).json({ message: "Subjects already declared for this class." });
     // }
 
     // Create a new subject document
     const newSubject = await Subject.create({
       classId: classDetails._id,
       classNumber,
-      subjects,
+      subjects: [...new Set(subjects)], // Save only unique subjects
     });
+    console.log("unique subjects:", [...new Set(subjects)]);
 
     // Push the new subjects into the subjects array of the corresponding Class document
-    classDetails.subjects.push(...subjects);
+    classDetails.subjects.push(...new Set(subjects)); // Push only unique subjects
 
     // Save the updated Class document
     await classDetails.save();
+    console.log("classDetails at save subject:" , classDetails)
 
     res.status(201).json(newSubject);
   } catch (error) {
@@ -60,6 +61,7 @@ const createSubject = async (req, res) => {
     res.status(500).json({ error: "Failed to create subject" });
   }
 };
+
 
 // const createSubject = async (req, res) => {
 //   try {
@@ -170,16 +172,17 @@ const updateSubject = async (req, res) => {
     const { classNumber, subjectsToAdd = [], subjectsToRemove = [] } = req.body;
     console.log("classNumber is : ", classNumber);
 
-    // Check if classNumber is a number and falls within the range of 1 to 10
+    // Check if classNumber is a number and falls within the range of 1 to 12
     if (
       typeof classNumber !== "number" ||
       classNumber < 1 ||
-      classNumber > 10
+      classNumber > 12
     ) {
       return res
         .status(400)
-        .json({ message: "Class number must be a number between 1 and 10" });
+        .json({ message: "Class number must be a number between 1 and 12" });
     }
+
     // Find the class with the given classNumber
     let classDetails = await Class.findOne({ classNumber });
 
@@ -187,11 +190,13 @@ const updateSubject = async (req, res) => {
       return res.status(404).json({ error: "Class not found" });
     }
 
+    // Validate subjects to add and remove
     const validationErrors = validateUpdateSubjects(
       subjectsToAdd,
       subjectsToRemove,
       classDetails
     );
+
     if (validationErrors.length > 0) {
       return res.status(400).json({ errors: validationErrors });
     }
@@ -212,6 +217,22 @@ const updateSubject = async (req, res) => {
     // Save the updated Class document
     classDetails = await classDetails.save();
 
+    // Find or create subject document
+    let subjectDoc = await Subject.findOne({ classId: classDetails._id });
+
+    if (!subjectDoc) {
+      // If subject document doesn't exist, create a new one
+      subjectDoc = await Subject.create({
+        classId: classDetails._id,
+        classNumber,
+        subjects: classDetails.subjects,
+      });
+    } else {
+      // Update existing subject document
+      subjectDoc.subjects = classDetails.subjects;
+      await subjectDoc.save();
+    }
+
     // Find all users associated with the updated class
     const users = await User.find({ classNumber });
 
@@ -230,17 +251,17 @@ const updateSubject = async (req, res) => {
         await user.save();
       }
     }
-    res
-      .status(200)
-      .json({
-        message: "Subjects updated successfully.",
-        updatedSubjects: classDetails.subjects,
-      });
+
+    res.status(200).json({
+      message: "Subjects updated successfully.",
+      updatedSubjects: classDetails.subjects,
+    });
   } catch (error) {
     console.error("Error updating subjects:", error);
     res.status(500).json({ error: "Failed to update subjects" });
   }
 };
+
 
 const getSubject = async (req, res) => {
   try {
