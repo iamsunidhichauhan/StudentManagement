@@ -11,7 +11,101 @@ const {
   validateDOB,
   validateEmail,
   validateClassNumber,
+  validateSubjects,
 } = require("../validations/validator");
+const { updateUserAndClasses } = require("../controllers/userOperations");
+
+// update User
+// const updateUser = async (req, res) => {
+//   try {
+//     const userId = req.body._id;
+//     if (!userId) {
+//       return res.status(400).json("Please provide userId");
+//     }
+//     // Find the user document
+//     const user = await User.findById(userId);
+//     if (!user) {
+//       return res.status(404).json({ message: "User not found" });
+//     }
+
+//     // updateUser function
+//     if ("addToClass" in req.body) {
+//       const addToClasses = Array.isArray(req.body.addToClass)
+//         ? req.body.addToClass
+//         : [req.body.addToClass];
+
+//       const removeFromClasses = Array.isArray(req.body.removeFromClass)
+//         ? req.body.removeFromClass
+//         : [req.body.removeFromClass];
+
+//       // Call updateUserAndClasses function to handle addToClass logic
+//       await updateUserAndClasses(
+//         req,
+//         res,
+//         user,
+//         addToClasses,
+//         removeFromClasses,
+//         userId
+//       );
+//     }
+
+//     // Validate other fields only if they are included in the update request
+//     const { fullName, contact, DOB, email } = req.body;
+//     console.log(req.body);
+
+//     const errors = [];
+
+//     // Check if email is being updated
+//     if (email !== undefined) {
+//       const existingUser = await User.findOne({ email });
+//       if (existingUser && existingUser._id.toString() !== userId) {
+//         return res.status(400).json({
+//           message: "Email already exists. Please choose a different email.",
+//         });
+//       }
+
+//       const emailErrors = validateEmail(email);
+//       if (emailErrors.length) {
+//         return res.status(400).json({ message: emailErrors.join(" ") });
+//       }
+//     }
+
+//     // Perform validation for other fields
+//     if (fullName !== undefined) {
+//       const fullNameErrors = validateFullName(fullName);
+//       errors.push(...fullNameErrors);
+//     }
+
+//     if (contact !== undefined) {
+//       const contactErrors = validateContact(contact);
+//       errors.push(...contactErrors);
+//     }
+
+//     if (DOB !== undefined) {
+//       const DOBErrors = validateDOB(DOB);
+//       errors.push(...DOBErrors);
+//     }
+
+//     if (errors.length > 0) {
+//       return res.status(400).json({ message: errors.join(" ") });
+//     }
+
+//     // Update the user in the database
+//     const updatedUser = await User.findOneAndUpdate(
+//       { _id: userId },
+//       { email, fullName, contact, DOB },
+//       { new: true } // To return the updated document
+//     );
+
+//     if (updatedUser) {
+//       return res.status(200).json({ message: "User updated successfully" });
+//     } else {
+//       return res.status(404).json({ message: "User not found" });
+//     }
+//   } catch (error) {
+//     return res.status(500).json({ message: error.message });
+//   }
+// };
 
 // updateRole to admin
 const updateRole = async (req, res) => {
@@ -47,7 +141,7 @@ const updateRole = async (req, res) => {
   }
 };
 
-// update user
+// // update user
 const updateUser = async (req, res) => {
   try {
     const userId = req.body._id;
@@ -61,17 +155,59 @@ const updateUser = async (req, res) => {
 
     // Fetch user's role and classNumbers
     const user = await User.findById(userId).select(
-      "role classNumber subjects"
+      "role classNumber subjects subjectToTeach classTeacherOf"
     );
     if (!user) {
       return res.status(404).json({ message: "User not found" });
     }
+    user.subjectToTeach = user.subjectToTeach;
+    console.log("subjectToTeach is", user.subjectToTeach);
     user.subjects = user.subjects || []; // Initialize with an empty array if undefined
 
-    const role = user.role;
+    let role = user.role;
+    console.log("role is : ", role);
     let userClassNumbers = user.classNumber || []; // Handle cases where classNumber might be empty
 
-    if ("addToClass" in userData || "removeFromClass" in userData || "subjectToTeach" in userData) {
+    // Check if the role is student and subjectsToStudy are provided
+    if (role === "student" && userData.subjectsToStudy) {
+      const classNumber = userClassNumbers[0]; // As the student is enrolled in only one class
+
+      // Fetch the class
+      const classObj = await Class.findOne({ classNumber });
+      console.log("classObj at fetch class", classObj);
+      if (!classObj) {
+        return res.status(400).json({
+          message: `Class with classNumber ${classNumber} not found.`,
+        });
+      }
+
+      // Validate subjectsToStudy using validateSubjects function
+      const validationErrors = validateSubjects(
+        userData.subjectsToStudy,
+        classNumber
+      );
+      if (validationErrors.length > 0) {
+        errors.push(...validationErrors);
+      }
+
+      // If there are any errors, return them
+      if (errors.length > 0) {
+        return res.status(400).json({ message: errors.join(" ") });
+      }
+
+      // Save subjectsToStudy in the subjects field of the user database
+      userData.subjects = userData.subjectsToStudy;
+    }
+
+    if (
+      "addToClass" in userData ||
+      "removeFromClass" in userData ||
+      "subjectToTeach" in userData ||
+      "subjectsToStudy" in userData ||  
+      "removeSubjectToTeach" in userData||
+      "addClassTeacher" in userData ||
+      "removeClassTeacher" in userData
+    ) {
       const studentEnrollmentErrors = []; // New array to store student enrollment errors
       const invalidClasses = []; // Combined array for invalid class numbers
       const nonExistentClasses = [];
@@ -103,10 +239,7 @@ const updateUser = async (req, res) => {
           const addToClasses = Array.isArray(userData.addToClass)
             ? userData.addToClass
             : [userData.addToClass];
-
-          
         }
-        console.log("userData.subjectToTeach", userData.subjectToTeach);
 
         const existingClass = await Class.findOne({ classNumber });
         if (
@@ -215,6 +348,15 @@ const updateUser = async (req, res) => {
                   ? classObj.totalStudents - 1
                   : 0; // Decrement totalStudents count
               }
+              // Filter out subjects associated with the classNumber being removed
+              user.subjects = user.subjects.filter((subject) => {
+                console.log(
+                  "Checking subject classNumber:",
+                  subject.classNumber
+                );
+                return subject.classNumber !== classNumber;
+              });
+              console.log("Filtered user subjects:", user.subjects);
               // Remove the classNumber from userData if it exists
               user.classNumber = user.classNumber.filter(
                 (num) => num !== classNumber
@@ -237,8 +379,12 @@ const updateUser = async (req, res) => {
               });
             }
             await classObj.save();
+            if (errors.length > 0) {
+              return res.status(400).json({ message: errors.join(" ") });
+            }
           }
         }
+
         for (const classNumber of addToClasses) {
           const classObj = await Class.findOne({ classNumber });
           // console.log("class obj:===> ", classObj);
@@ -280,58 +426,125 @@ const updateUser = async (req, res) => {
             );
 
             // Update the classNumber in userData
-            userData.classNumber = [
-              ...new Set([...(userData.classNumber || []), ...addToClasses]),
-            ]; // Ensures unique class numbers
-            console.log("classNumber:", classNumber);
+            const updatedClassNumbers = new Set([
+              ...(user.classNumber || []),
+              ...addToClasses,
+            ]);
+            console.log("updatedClassnumbers : ", updatedClassNumbers);
+            userData.classNumber = [...updatedClassNumbers]; // Convert Set back to array
+            console.log("userdata.classNumber:", userData.classNumber);
             console.log("data:", userData);
+            // res.status(200).json({ message: "Data updated successfully" });
           }
         }
       }
       // Handle subjectToTeach based on user's role and classes assigned
-      if (role === "teacher") {
+      if (role === "teacher" && userData.subjectToTeach) {
         const subjectToTeach = [];
+        // console.log(" found role at subjectToTeach: ", role);
 
         // Fetch the class object for each class the teacher is assigned to
         for (const classNumber of userClassNumbers) {
           const classObj = await Class.findOne({ classNumber });
+          // console.log("classObj: ", classObj);
 
           if (classObj && classObj.teachers.includes(userId)) {
             // If the teacher is assigned to the class, add subjects of that class to subjectToTeach
-            subjectToTeach.push(...classObj.subjects);          
-            console.log("classObj.subjects: ", classObj.subjects);
+            subjectToTeach.push(...classObj.subjects);
+            // console.log("classObj.subjects: ", classObj.subjects);
           }
         }
         // Filter out subjects that the teacher is not enrolled in (if the field is present in request body)
         if ("subjectToTeach" in userData) {
-          userData.subjectToTeach = userData.subjectToTeach.filter(
-            (subject) => subjectToTeach.includes(subject)
+          userData.subjectToTeach = userData.subjectToTeach.filter((subject) =>
+            subjectToTeach.includes(subject)
           );
-        }console.log("userData.subjectToTeach: ",userData.subjectToTeach)
+        }
+        // Update the user data in the database
+        const updatedUser = await User.findByIdAndUpdate(
+          userId,
+          { ...userData, updatedAt: currentDate },
+          { new: true, select: "-password" }
+        );
+        if (!updatedUser) {
+          // console.log("userdata after update ==>", userData);
+          return res.status(404).json({ message: "User not found" });
+        }
+
+        // // Exclude password from the response
+        // const userResponse = { ...updatedUser.toObject(), password: undefined };
+        // res.status(200).json({ message: "User updated successfully" ,data: userResponse});// (for teacher)
+      } else if (
+        role === "student" &&
+        !userData.removeFromClass &&
+        !userData.addToClasses
+      ) {
+        console.log("role ckeck at filter subject:", role);
+        // If the role is student, ensure that subjectToTeach field is not updated
+        delete userData.subjectToTeach; // Deleting the subjectToTeach field
+        console.log("userData at subjectToTeach ", userData);
+        // errors.push("subjectToTeach field is not available for student");
       }
+      // handle subjectToTeach field if present
+      subjectToTeach = user.subjectToTeach;
+      if ("removeSubjectToTeach" in userData) {
+        userData.removeSubjectToTeach = userData.removeSubjectToTeach.filter(
+          (subject) => subjectToTeach.includes(subject)
+        );
+
+        // Remove subjects from subjectToTeach field
+        user.subjectToTeach = user.subjectToTeach.filter(
+          (subject) => !userData.removeSubjectToTeach.includes(subject)
+        );
+        console.log("user.subjectToTeach", user.subjectToTeach);
+
+        // Check if any subjects in removeSubjectToTeach are not present in user.subjectToTeach
+        const nonExistingSubjects = userData.removeSubjectToTeach.filter(
+          (subject) => !user.subjectToTeach.includes(subject)
+        );
+        console.log("nonExistingSubjects: ", nonExistingSubjects);
+
+        // If any non-existing subjects are found, return an error
+        if (nonExistingSubjects.length > 0) {
+          return res.status(400).json({
+            message: `Subjects (${nonExistingSubjects.join(
+              ", "
+            )}) are not present in the teacher's subjectsToTeach field`,
+          });
+        }
+      }
+      await user.save();
+
+      // Check for errors before updating the user data
+      if (errors.length > 0) {
+        return res.status(400).json({ message: errors.join(" ") });
+      }
+
+      
+
       // Update the user data in the database
       const updatedUser = await User.findByIdAndUpdate(
         userId,
-        { ...userData, updatedAt: currentDate }, // Include updatedAt field with current date
+        { ...userData, updatedAt: currentDate, subjectToTeach: undefined }, // Set subjectToTeach to undefined
         { new: true, select: "-password" }
       );
-      console.log("userdata after update ==>", userData);
       if (!updatedUser) {
+        // console.log("userdata after update ==>", userData);
         return res.status(404).json({ message: "User not found" });
       }
 
       // Exclude password from the response
       const userResponse = { ...updatedUser.toObject(), password: undefined };
-      res.status(200).json({ message: "User updated successfully" });
+      res
+        .status(200)
+        .json({ message: "User updated successfully", data: userResponse });
     }
   } catch (error) {
+    console.error("An error occurred:", error); // Log the error to the console
+
     res.status(500).json({ message: error.message });
   }
 };
-
-
-
-
 
 // Get all Students
 const getStudents = async (req, res) => {
