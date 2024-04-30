@@ -180,9 +180,14 @@ const registerStudent = async (req, res) => {
         .status(400)
         .json({ message: `Class with classNumber ${classNumber} not found.` });
     }
-    const studentSubject = classObj.subjects;
-    console.log("studentSubject is:", studentSubject);
-    console.log("studentSubject", studentSubject);
+
+    let studentSubject = []; // Initialize studentSubject as an empty string
+
+    // If classNumber is between 1 and 10, assign subjects
+    if (parseInt(classNumber) >= 1 && parseInt(classNumber) <= 10) {
+      studentSubject = classObj.subjects;
+    }
+
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -218,6 +223,7 @@ const registerStudent = async (req, res) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
+
 
 const registerTeacher = async (req, res) => {
   try {

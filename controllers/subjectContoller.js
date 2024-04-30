@@ -5,6 +5,7 @@ const {
   validateSubjects,
   validateUpdateSubjects,
 } = require(`../validations/validator`);
+const {searchSubjects} = require("../operations/searchOperations")
 
 // CREATE
 const createSubject = async (req, res) => {
@@ -63,110 +64,7 @@ const createSubject = async (req, res) => {
 };
 
 
-// const createSubject = async (req, res) => {
-//   try {
-//       const { classNumber, subjects } = req.body;
-
-//       // Find the class with the given classNumber
-//       const classDetails = await Class.findOne({ classNumber });
-
-//       // Validate classNumber
-//       if (typeof classNumber !== 'number' || classNumber < 1 || classNumber > 10) {
-//           return res.status(400).json({ message: "Class number must be a number between 1 and 10" });
-//       }
-
-//       // Check if classDetails is found
-//       if (!classDetails) {
-//           return res.status(404).json({ error: "Class not found" });
-//       }
-
-//       // Create a new subject document
-//       const newSubject = await Subject.create({ classId: classDetails._id, classNumber, subjects });
-
-//       // Store the ObjectId of the newly created subject directly in the subjects array of the corresponding Class document
-//       classDetails.subjects = newSubject._id;
-
-//       // Save the updated Class document
-//       await classDetails.save();
-
-//       res.status(201).json(newSubject);
-//   } catch (error) {
-//       console.error("Error creating subject:", error);
-//       res.status(500).json({ error: "Failed to create subject" });
-//   }
-// };
-
-// // UPDATE
-// const updateSubject = async (req, res) => {
-//   try {
-//     const { classNumber, subjectsToAdd = [], subjectsToRemove = [] } = req.body;
-
-//     // Validate subjects to add
-//     const validationErrorsToAdd = validateUpdateSubjects(subjectsToAdd, classNumber);
-//     if (validationErrorsToAdd.length > 0) {
-//       return res.status(400).json({ errors: validationErrorsToAdd });
-//     }
-
-//     // Validate subjects to remove
-//     const classDetails = await Class.findOne({ classNumber });
-//     if (!classDetails) {
-//       return res.status(404).json({ error: "Class not found" });
-//     }
-//     const validationErrorsToRemove = validateSubjectsToRemove(subjectsToRemove, classDetails.subjects);
-//     if (validationErrorsToRemove.length > 0) {
-//       return res.status(400).json({ errors: validationErrorsToRemove });
-//     }
-
-//     // Filter out duplicate subjects before adding
-//     const uniqueSubjectsToAdd = subjectsToAdd.filter(subject => !classDetails.subjects.includes(subject));
-//     classDetails.subjects.push(...uniqueSubjectsToAdd);
-
-//     // Remove subjects
-//     if (subjectsToRemove.length > 0) {
-//       classDetails.subjects = classDetails.subjects.filter(subject => !subjectsToRemove.includes(subject));
-//     }
-
-//     // Save the updated Class document
-//     await classDetails.save();
-
-//     // Find all users associated with the updated class
-//     const users = await User.find({ classNumber });
-
-//     // Update the subjects field for each user
-//     for (const user of users) {
-//       if (user.role === "student") {
-//         // Add new subjects
-//         user.subjects.push(...uniqueSubjectsToAdd);
-
-//         // Remove subjects
-//         user.subjects = user.subjects.filter(subject => !subjectsToRemove.includes(subject));
-
-//         // Save the updated user document
-//         await user.save();
-//       }
-//     }
-
-//     res.status(200).json({ message: "Subjects updated successfully.", updatedSubjects: classDetails.subjects });
-//   } catch (error) {
-//     console.error("Error updating subjects:", error);
-//     res.status(500).json({ error: "Failed to update subjects" });
-//   }
-// };
-
-// // Validation function for subjects to remove
-// const validateSubjectsToRemove = (subjectsToRemove, currentSubjects) => {
-//   const errors = [];
-
-//   // Validate if subjects to remove are present in current subjects
-//   for (const subject of subjectsToRemove) {
-//     if (!currentSubjects.includes(subject)) {
-//       errors.push(`Subject '${subject}' is not present in the class.`);
-//     }
-//   }
-
-//   return errors;
-// };
-
+// update subject
 const updateSubject = async (req, res) => {
   try {
     const { classNumber, subjectsToAdd = [], subjectsToRemove = [] } = req.body;
@@ -262,7 +160,7 @@ const updateSubject = async (req, res) => {
   }
 };
 
-
+// find subject by id
 const getSubject = async (req, res) => {
   try {
     const subjectId = req.body.subjectId;
@@ -270,8 +168,7 @@ const getSubject = async (req, res) => {
       return res.status(400).json("student id required.");
     }
     const foundSubjects = await Subject.findById(subjectId);
-    console.log("foundSubjects :", foundSubjects);
-    console.log("subjectId", subjectId);
+
     if (!foundSubjects) {
       return res.status(400).json({ messgae: "subjects not found" });
     }
@@ -284,16 +181,30 @@ const getSubject = async (req, res) => {
 // get subject list
 const getAllSubject = async (req, res) => {
   try {
-    const subjects = await Subject.find({});
-    if (!subjects || subjects.length === 0) {
-      return res.status(404).json({ message: "No subjects found." });
+    let foundSubjects
+
+    // Check if there are search parameters in the request body
+    if (Object.keys(req.body).length > 0) {
+      foundSubjects = await searchSubjects(req.body);
+    } else {
+      foundSubjects = await Subject.find({}).select("-password");
     }
-    res.status(200).json({ message: "List of all subjects:", subjects });
+
+    // Check if no users were found and send appropriate response
+    if (foundSubjects.length === 0) {
+      return res.status(404).json({ message: "No Subjects found matching your search criteria." });
+    }
+    console.log("founduser is : ", foundSubjects)
+
+    // Send the response with the found users
+    return res.status(200).json({ message: "Subjects fetched successfully!", users: foundSubjects });
   } catch (error) {
     res.status(500).json({ message: error.message });
+    console.error("An error occurred:", error);
   }
 };
 
+// delete subject 
 const deleteSubject = async (req, res) => {
   try {
     const { subjectId } = req.body;

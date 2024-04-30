@@ -1,3 +1,6 @@
+const User = require ("../models/user")
+const Class = require ("../models/class")
+
 const validateFullName = (fullName) => {
   const errors = [];
   if (!fullName) {
@@ -19,13 +22,14 @@ const validateEmail = (email) => {
   if (!email) {
     errors.push("Email is required.");
   } else {
-    const emailRegex = /^\s*[a-z0-9]+@[a-z]+\.[a-z]{2,3}\s*$/;
+    const emailRegex = /^\s*[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\s*$/i;
     if (!emailRegex.test(email)) {
       errors.push("Please enter a valid email.");
     }
   }
   return errors;
 };
+  
 
 const validateContact = (contact) => {
   const errors = [];
@@ -211,12 +215,171 @@ const validateSubjects = (subjects, classNumber) => {
 };
 
 
-const validateUpdateSubjects = (
+
+
+const validateUpdateSubjects = async (
+  subjectsToAdd,
+  subjectsToRemove,
+  classDetails
+) => {
+  console.log("*")
+  console.log("classDetails are : ",classDetails)
+
+  const errors = [];
+  console.log("classdetails",classDetails)
+
+  const allowedSubjects =
+    classDetails.classNumber >= 1 && classDetails.classNumber <= 10
+      ? [
+          "maths",
+          "science",
+          "english",
+          "hindi",
+          "gujarati",
+          "sanskrit",
+          "social-science",
+          "geography",
+        ]
+      : [
+          "physics",
+          "chemistry",
+          "biology",
+          "maths",
+          "sanskrit",
+          "english",
+          "economics",
+          "finance",
+          "sociology",
+        ];
+
+  // Validate subjectsToAdd
+  for (const subject of subjectsToAdd) {
+    console.log("Validating subject to add:", subject);
+    if (!allowedSubjects.includes(subject.toLowerCase())) {
+      errors.push(`${subject} is not a valid subject to add.`);
+      console.log(`${subject} is not a valid subject to add.`);
+    } 
+    // else if (classDetails.subjects.includes(subject)) {
+    //   console.log(
+    //     `Subject ${subject} already exists in this class.`,
+    //     classDetails.subjects
+    //   );
+    //   errors.push(`${subject} already exists in this class.`);
+    // }
+  }
+
+  // Validate subjectsToRemove (optional)
+  if (subjectsToRemove.length > 0) {
+    const user = await User.findOne({ classNumber: classDetails.classNumber });
+    const userSubjects = user ? user.subjectToTeach : [];
+
+    for (const subject of subjectsToRemove) {
+      if (!userSubjects.includes(subject)) {
+        errors.push(`${subject} is not present in the user's subjectsToTeach.`);
+      }
+    }
+  }
+
+  return errors;
+};
+
+const validateUpdateSubjectsToremove = async (
+  subjectsToRemove,
+  classDetails
+) => {
+  console.log("*");
+  console.log("classDetails are : ", classDetails);
+
+  const errors = [];
+  console.log("classdetails", classDetails);
+
+  const allowedSubjects =
+    classDetails.classNumber >= 1 && classDetails.classNumber <= 10
+      ? [
+          "maths",
+          "science",
+          "english",
+          "hindi",
+          "gujarati",
+          "sanskrit",
+          "social-science",
+          "geography",
+        ]
+      : [
+          "physics",
+          "chemistry",
+          "biology",
+          "maths",
+          "sanskrit",
+          "english",
+          "economics",
+          "finance",
+          "sociology",
+        ];
+
+  // Validate subjectsToRemove (optional)
+  if (subjectsToRemove && subjectsToRemove.length > 0) {
+    try {
+      // Assuming User is your mongoose model for users
+      const user = await User.findOne({ classNumber: classDetails.classNumber });
+      
+      if (!user) {
+        errors.push(`User with class number ${classDetails.classNumber} not found.`);
+      } else {
+        const userSubjects = user.subjectToTeach || [];
+
+        subjectsToRemove.forEach((subject) => {
+          if (!userSubjects.includes(subject)) {
+            errors.push(`${subject} is not present in the user's subjectsToTeach.`);
+          }
+        });
+      }
+    } catch (error) {
+      errors.push(`Error occurred while fetching user details: ${error.message}`);
+    }
+  }
+
+  return errors;
+};
+
+
+// const validateSubjectAtClass = (subjectToAdd, subjectToRemove) => {
+//   const allowedSubjects = [
+//     "physics",
+//     "chemistry",
+//     "biology",
+//     "maths",
+//     "sanskrit",
+//     "english",
+//     "economics",
+//     "finance",
+//     "sociology",
+//   ];
+
+//   const invalidSubjectsToAdd = subjectToAdd.filter(subject => !allowedSubjects.includes(subject));
+//   const invalidSubjectsToRemove = subjectToRemove.filter(subject => !allowedSubjects.includes(subject));
+//   console.log("invalidSubjectsToRemove is :", invalidSubjectsToRemove )
+
+//   const messages = [];
+
+//   if (invalidSubjectsToAdd.length > 0) {
+//     messages.push(`Invalid subjects to add: ${invalidSubjectsToAdd.join(', ')}. Allowed subjects are: ${allowedSubjects.join(', ')}.`);
+//   }
+
+//   if (invalidSubjectsToRemove.length > 0) {
+//     messages.push(`Invalid subjects to remove: ${invalidSubjectsToRemove.join(', ')}. Allowed subjects are: ${allowedSubjects.join(', ')}.`);
+//   }
+
+//   return messages;
+// };
+
+const validateSubjectAtClass = (
   subjectsToAdd,
   subjectsToRemove,
   classDetails
 ) => {
   const errors = [];
+  // console.log("classDetails at validateSubject :",classDetails)
 
   const allowedSubjects =
     classDetails.classNumber >= 1 && classDetails.classNumber <= 10
@@ -265,6 +428,7 @@ const validateUpdateSubjects = (
   return errors;
 };
 
+
 module.exports = {
   validateFullName,
   validateEmail,
@@ -275,4 +439,6 @@ module.exports = {
   validateClassNumber,
   validateSubjects,
   validateUpdateSubjects,
+  validateSubjectAtClass,
+  validateUpdateSubjectsToremove
 };

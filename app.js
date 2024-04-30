@@ -13,7 +13,8 @@ const subjects = require("./models/subject")
 
 // Import controllers
 const {
-  getAllUsers,
+  getAllUsersbyGet,
+  getAllUsersbyPost,
   updateRole,
   getOneUser,
   updateUser,
@@ -55,7 +56,8 @@ app.post("/forgot-password", forgotPassword);
 app.post("/reset-password", resetPassword);
 
 // User routes
-app.get("/users", verifyToken, isAdmin, getAllUsers);
+app.get("/users", verifyToken, isAdmin, getAllUsersbyGet);
+app.post("/users", verifyToken, isAdmin, getAllUsersbyPost);
 app.get("/findOne/user", verifyToken, isAdmin, getOneUser);
 app.put("/update/user", verifyToken, isAdmin, updateUser);
 app.delete("/delete/user", verifyToken, isAdmin, deleteUser);
