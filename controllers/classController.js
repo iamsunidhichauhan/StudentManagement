@@ -1,7 +1,7 @@
-const User = require("../models/user");
-const OTP = require("../models/otp");
-const Class = require("../models/class");
-const Subject = require("../models/subject");
+const OTP = require(`../models/otp`)
+const Subject = require(`../models/subject`);
+const Class = require(`../models/class`);
+const User = require(`../models/user`);
 const {
   validateFullName,
   validateEmail,
@@ -13,17 +13,32 @@ const {
   validateSubjects,
   validateSubjectAtClass,
 } = require(`../validations/validator`);
-const { searchUsers } = require(`../operations/searchOperations`);
 
 const createClass = async (req, res) => {
-  const { classNumber, classTeacherId } = req.body;
+  const { classNumber, classTeacherId, subjects } = req.body;
   try {
+    // validate classNumber
     const classNumberErrors = validateClassNumber(classNumber);
     if (classNumberErrors.length > 0) {
       return res.status(400).json({ errors: classNumberErrors });
     }
     if (!classTeacherId) {
-      return res.status(400).json({ error: "Class teacher ID is required." });
+      return res
+        .status(400)
+        .json({ error: "Class teacher ID, subjects is required." });
+    }
+    const invalidSubjects = [];
+    for (const subject of subjects) {
+      const existingSubject = await Subject.findOne({ subject });
+      if (!existingSubject) {
+        invalidSubjects.push(subject);
+        console.log("invalidsubjects:", invalidSubjects);
+      }
+    }
+    if (invalidSubjects.length > 0) {
+      return res
+        .status(400)
+        .json({ error: `Subjects not found: ${invalidSubjects.join(", ")}` });
     }
 
     // Check if classteacherId corresponds to an existing teacher
@@ -48,6 +63,7 @@ const createClass = async (req, res) => {
     const newClass = new Class({
       classNumber: parseInt(classNumber),
       classTeacherId: classTeacherId,
+      subjects: subjects,
     });
 
     // Save the new class to the database
@@ -57,7 +73,19 @@ const createClass = async (req, res) => {
     existingTeacher.classTeacherOf.push(newClass._id);
     await existingTeacher.save();
 
-    res.status(200).json({ message: "Class created successfully!" });
+    // Update the subjectsToStudy field for all students enrolled in this class
+    const studentsInClass = await User.find({
+      classNumber: newClass.classNumber,
+      role: "student",
+    });
+    for (const student of studentsInClass) {
+      student.subjects = subjects;
+      await student.save();
+    }
+
+    res
+      .status(200)
+      .json({ message: "Class created successfully!", class: newClass });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Failed to create class." });
@@ -83,32 +111,266 @@ const findOneClass = async (req, res) => {
   }
 };
 
+// const getAllClass = async (req, res) => {
+//   try {
+//     const { classNumber, teacherName, studentName } = req.body;
+
+//     if (classNumber) {
+//       // Find class by classNumber
+//       const foundClass = await Class.findOne({ classNumber });
+//       if (!foundClass) {
+//         return res
+//           .status(404)
+//           .json({ message: `Class with classNumber ${classNumber} not found` });
+//       }
+//       return res.json(foundClass);
+//     } else if (teacherName) {
+//       // Find class by teacher's name
+//       const classByTeacherName = await User.aggregate([
+//         {
+//           $lookup: {
+//             from: 'users',
+//             localField: 'teachers',
+//             foreignField: '_id',
+//             as: 'teachers',
+//           },
+//         },
+//         {
+//           $match: {
+//             'teachers.fullName': teacherName,
+//           },
+//         },
+//       ]);
+
+//       if (classByTeacherName.length === 0) {
+//         return res.status(404).json({ message: 'No class found for the given teacher name' });
+//       }
+
+//       return res.json(classByTeacherName);
+//     } else if (studentName) {
+//       // Find class by student's name (with regex to find similar names)
+//       const classByStudentName = await Class.aggregate([
+//         {
+//           $lookup: {
+//             from: 'users',
+//             localField: 'students',
+//             foreignField: '_id',
+//             as: 'students',
+//           },
+//         },
+//         {
+//           $match: {
+//             'students.fullName': { $regex: studentName, $options: 'i' }, // Case insensitive regex match
+//           },
+//         },
+//       ]);
+
+//       if (classByStudentName.length === 0) {
+//         return res.status(404).json({ message: 'No class found for the given student name' });
+//       }
+
+//       return res.json(classByStudentName);
+//     } else {
+//       // Fetch list of all classes
+//       const allClasses = await Class.find();
+//       return res.json(allClasses);
+//     }
+//   } catch (error) {
+//     res.status(500).json({ message: error.message });
+//   }
+// };
+
+
+// const getAllClass = async (req, res) => {
+//   try {
+//     const { classNumber } = req.body;
+
+//     if (classNumber) {
+//       // Find class by classNumber given in request body
+//       const foundClass = await Class.findOne({ classNumber });
+
+//       if (!foundClass) {
+//         return res
+//           .status(404)
+//           .json({ message: `Class with classNumber ${classNumber} not found` });
+//       }
+
+//       return res.json(foundClass);
+//     } else {
+//       // Fetch list of all classes
+//       const allClasses = await Class.find();
+//       return res.json(allClasses);
+//     }
+//   } catch (error) {
+//     res.status(500).json({ message: error.message });
+//   }
+// };
+
+
+
+
+
+
+// const getAllClass = async (req, res) => {
+//   try {
+//     const { classNumber, studentName, teacherName } = req.body;
+
+//     if (classNumber) {
+//       // Find class by classNumber
+//       const foundClass = await Class.findOne({ classNumber })
+//         .populate('students', 'fullName')
+//         .populate('teachers', 'fullName')
+//         .populate('classTeacherId', 'fullName');
+
+//       if (!foundClass) {
+//         return res
+//           .status(404)
+//           .json({ message: `Class with classNumber ${classNumber} not found` });
+//       }
+//       return res.json(foundClass);
+//     } else if (studentName || teacherName) {
+//       // Find class by studentName or teacherName
+//       const classByName = await Class.aggregate([
+//         {
+//           $lookup: {
+//             from: 'users',
+//             localField: 'students',
+//             foreignField: '_id',
+//             as: 'students',
+//           },
+//         },
+//         {
+//           $lookup: {
+//             from: 'users',
+//             localField: 'teachers',
+//             foreignField: '_id',
+//             as: 'teachers',
+//           },
+//         },
+//         {
+//           $lookup: {
+//             from: 'users',
+//             localField: 'classTeacherId',
+//             foreignField: '_id',
+//             as: 'classTeacher',
+//           },
+//         },
+//         {
+//           $match: {
+//             $or: [
+//               { 'students.fullName': studentName },
+//               { 'teachers.fullName': teacherName },
+//               { 'classTeacher.fullName': teacherName },
+//             ],
+//           },
+//         },
+//         {
+//           $project: {
+//             classNumber: 1,
+//             students: {
+//               $filter: {
+//                 input: '$students',
+//                 as: 'student',
+//                 cond: { $eq: ['$$student.fullName', studentName] },
+//               },
+//             },
+//             teachers: {
+//               $filter: {
+//                 input: '$teachers',
+//                 as: 'teacher',
+//                 cond: { $eq: ['$$teacher.fullName', teacherName] },
+//               },
+//             },
+//             classTeacher: {
+//               $filter: {
+//                 input: '$classTeacher',
+//                 as: 'teacher',
+//                 cond: { $eq: ['$$teacher.fullName', teacherName] },
+//               },
+//             },
+//           },
+//         },
+//       ]);
+
+//       if (classByName.length === 0) {
+//         return res.status(404).json({ message: 'No class found for the given name' });
+//       }
+
+//       return res.json(classByName);
+//     } else {
+//       // Fetch list of all classes
+//       const allClasses = await Class.find()
+//         .populate('students', 'fullName')
+//         .populate('teachers', 'fullName')
+//         .populate('classTeacherId', 'fullName');
+
+//       return res.json(allClasses);
+//     }
+//   } catch (error) {
+//     res.status(500).json({ message: error.message });
+//   }
+// };
+
+// ========> updateclass
+
 const getAllClass = async (req, res) => {
   try {
-    const { classNumber } = req.body;
+    const { classNumber, teacherName, studentName } = req.body;
 
-    if (classNumber) {
-      // Find class by classNumber given in request body
-      const foundClass = await Class.findOne({ classNumber });
+    // Find class by classNumber
+    const foundClass = await Class.findOne({ classNumber });
 
-      if (!foundClass) {
-        return res
-          .status(404)
-          .json({ message: `Class with classNumber ${classNumber} not found` });
-      }
-
-      return res.json(foundClass);
-    } else {
-      // Fetch list of all classes
-      const allClasses = await Class.find();
-      return res.json(allClasses);
+    if (!foundClass) {
+      return res.status(404).json({ message: `Class with classNumber ${classNumber} not found` });
     }
+
+    // Extract teacher and student IDs from the found class
+    const { teachers, students } = foundClass;
+
+    // Search for users with matching names
+    const matchingUsers = await User.find({
+      $or: [
+        { _id: { $in: teachers }, fullName: teacherName },
+        { _id: { $in: students }, fullName: studentName }
+      ]
+    });
+
+    if (matchingUsers.length === 0) {
+      return res.status(404).json({ message: 'No user found with the provided name in the class' });
+    }
+
+    return res.json(matchingUsers);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-// ========> updateclass
+
+// const getAllClass = async (req, res) => {
+//   try {
+//     const { classNumber } = req.body;
+
+//     if (classNumber) {
+//       // Find class by classNumber given in request body
+//       const foundClass = await Class.findOne({ classNumber });
+
+//       if (!foundClass) {
+//         return res
+//           .status(404)
+//           .json({ message: `Class with classNumber ${classNumber} not found` });
+//       }
+
+//       return res.json(foundClass);
+//     } else {
+//       // Fetch list of all classes
+//       const allClasses = await Class.find();
+//       return res.json(allClasses);
+//     }
+//   } catch (error) {
+//     res.status(500).json({ message: error.message });
+//   }
+// };
+
 const updateClass = async (req, res) => {
   const classId = req.body.classId;
   const {
@@ -331,6 +593,7 @@ const updateClass = async (req, res) => {
     if (validationErrors.length > 0) {
       return res.status(400).json({ errors: validationErrors });
     }
+
     // Add subjects
     if (subjectToAdd && subjectToAdd.length > 0) {
       subjectToAdd.forEach((subject) => {
@@ -357,6 +620,7 @@ const updateClass = async (req, res) => {
         });
       }
     }
+
     // Find subjects associated with the class
     const subjectsToUpdate = await Subject.find({ classId: classId });
 
@@ -384,39 +648,55 @@ const updateClass = async (req, res) => {
 
     // Use the classNumber to find users
     const usersToUpdate = await User.find({ classNumber: classNumber });
+
     console.log("usersToUpdate is : ", usersToUpdate);
 
     // Update subjects for each user
-    usersToUpdate.forEach((user) => {
-      // Initialize user.subjects as an empty array if it's not already an array
-      if (!Array.isArray(user.subjects)) {
-        user.subjects = [];
-      }
+    const updatedUsers = await Promise.all(
+      usersToUpdate.map(async (user) => {
+        // Initialize user.subjects as an empty array if it's not already an array
+        if (!Array.isArray(user.subjects)) {
+          user.subjects = [];
+        }
 
-      // Remove subjects that are being removed from the class
-      if (subjectToRemove && subjectToRemove.length > 0) {
-        user.subjects = user.subjects.filter(
-          (subject) => !subjectToRemove.includes(subject)
-        );
-      }
+        // Remove subjects that are being removed from the class
+        if (subjectToRemove && subjectToRemove.length > 0) {
+          user.subjects = user.subjects.filter(
+            (subject) => !subjectToRemove.includes(subject)
+          );
+        }
 
-      // Add subjects that are being added to the class
-      if (subjectToAdd && subjectToAdd.length > 0) {
-        console.log("subjectsToAdd is : ", subjectToAdd);
-        subjectToAdd.forEach((subject) => {
-          if (!user.subjects.includes(subject)) {
-            user.subjects.push(subject);
-            console.log(
-              `Subject '${subject}' added for user '${user.fullName}'`
-            );
-            console.log("user.subjects are : ",user.subjects)
-          }
-        });
-      }
-    });
+        // Add subjects that are being added to the class
+        if (subjectToAdd && subjectToAdd.length > 0) {
+          console.log("subjectsToAdd is : ", subjectToAdd);
+          subjectToAdd.forEach((subject) => {
+            if (!user.subjects.includes(subject)) {
+              user.subjects.push(subject);
+              console.log(
+                `Subject '${subject}' added for user '${user.fullName}'`
+              );
+              console.log("user.subjects are : ", user.subjects);
+            }
+          });
+        }
 
-    // Save the updated users collection to the database
-    await Promise.all(usersToUpdate.map((user) => user.save()));
+        // Save the updated user document
+        return user.save();
+      })
+    );
+
+    // console.log("*");
+    // console.log("*");
+    // console.log("*");
+    // console.log("*");
+
+    // console.log("Updated users:", updatedUsers);
+
+    // res.status(200).json({
+    //   message: "Class and associated users updated successfully",
+    //   updatedClass: existingClass,
+    //   updatedUsers,
+    // });
 
     // Adding Class Teacher
     console.log("==>");
@@ -521,4 +801,3 @@ module.exports = {
   deleteClass,
 };
 
-// check counts + -
